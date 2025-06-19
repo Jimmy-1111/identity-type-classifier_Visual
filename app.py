@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 from sentence_transformers import SentenceTransformer, util
+import torch
 
-# === 模型載入 ===
-model = SentenceTransformer("sonoisa/sentence-bert-base-ja-mean-tokens", device="cpu")
+# === 模型載入（安全版本）===
+model = SentenceTransformer("sonoisa/sentence-bert-base-ja-mean-tokens")
+model.to(torch.device("cpu"))
 
-# === 預設定義語句 ===
+# === 分類定義（預設）===
 default_definitions = {
     "アイデンティティ挑戦型イノベーション": (
         "私たちはモビリティサービス企業へと転換します。\n"
@@ -32,41 +34,34 @@ default_definitions = {
         "図１：収益の推移\n"
         "注記：本資料は監査法人の確認を受けています。\n"
         "目次\n"
-        "以上\n"
-        "当連結会計年度の日本経済は、景気が緩やかに回復した。"
+        "以上"
     )
 }
 
-# === Streamlit UI ===
+# === UI ===
 st.set_page_config(page_title="日本語句子分類", layout="centered")
-st.title("📊 日本語：企業年報文のアイデンティティ分類")
+st.title("\U0001F4CA 日本語：企業年報文のアイデンティティ分類")
 
-st.header("📝 分類基準の定義文（複数行可）")
+st.header("\U0001F4DD 分類基準の定義文（複数行可）")
 category_inputs = {}
-for cat, default in default_definitions.items():
-    category_inputs[cat] = st.text_area(cat, value=default, height=90)
+user_inputs = {}
 
-st.header("✏️ 分析対象の文を入力（1 行 1 文）")
+for cat, default in default_definitions.items():
+    text = st.text_area(cat, value=default, height=90)
+    category_inputs[cat] = default if text.strip() == default.strip() else text
+
+st.header("\U0001F58B️ 分析対象の文を入力（1 行 1 文）")
 sentences_text = st.text_area("ここに文を入力してください", height=220)
 
-# === 外部現象關鍵字 ===
 EXTERNAL_ONLY_KEYWORDS = [
-    "経済", "景気", "インフレ", "金利", "為替", "物価", "政策", "地政学", "個人消費",
-    "中央銀行", "消費者心理", "投資環境", "輸出", "輸入", "GDP", "景況感"
+    "経済", "景気", "インフレ", "金利", "為替", "物価", "政策", "地政学",
+    "個人消費", "中央銀行", "消費者心理", "投資環境", "輸出", "輸入", "GDP", "景況感"
 ]
 
-# === 判斷是否屬於其他 ===
 def is_force_other(sent):
-    # 含有全形括號
-    if "【" in sent or "】" in sent:
-        return True
-    # 外部現象關鍵字
-    if any(kw in sent for kw in EXTERNAL_ONLY_KEYWORDS):
-        return True
-    return False
+    return "【" in sent or "】" in sent or any(kw in sent for kw in EXTERNAL_ONLY_KEYWORDS)
 
-# === 分析 ===
-if st.button("🚀 分析する"):
+if st.button("\U0001F680 分析する"):
     sentences = [s.strip() for s in sentences_text.splitlines() if s.strip()]
     if not sentences:
         st.warning("文が入力されていません。")
@@ -75,17 +70,17 @@ if st.button("🚀 分析する"):
     sentence_embeddings = model.encode(sentences, convert_to_tensor=True)
 
     definition_embeddings = {}
-    for label, text_block in category_inputs.items():
-        defs = [t.strip() for t in text_block.splitlines() if t.strip()]
+    for label, definition_text in category_inputs.items():
+        defs = [t.strip() for t in definition_text.splitlines() if t.strip()]
         if not defs:
-            defs = default_definitions[label].splitlines()
+            continue
         emb = model.encode(defs, convert_to_tensor=True).mean(dim=0)
         definition_embeddings[label] = emb
 
-    predicted_labels, similarity_scores = [], []
+    predicted_labels = []
+    similarity_scores = []
 
     for sent, sent_emb in zip(sentences, sentence_embeddings):
-        # 強制歸類為其他的條件
         if is_force_other(sent):
             predicted_labels.append("その他（Other）")
             similarity_scores.append(0.0)
@@ -107,5 +102,5 @@ if st.button("🚀 分析する"):
         "similarity score": similarity_scores
     })
 
-    st.subheader("🔎 分析結果")
+    st.subheader("\U0001F50D 分析結果")
     st.dataframe(result_df, use_container_width=True)
