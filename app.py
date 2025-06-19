@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer, util
 model = SentenceTransformer("sonoisa/sentence-bert-base-ja-mean-tokens")
 model.to(torch.device("cpu"))
 
-# 分類定義文
+# 分類定義文（已移除「伝統的／中立的言語」）
 category_definitions = {
     "アイデンティティ挑戦型イノベーション": (
         "私たちはモビリティサービス企業へと転換します。\n"
@@ -22,15 +22,11 @@ category_definitions = {
         "高品質へのこだわりをさらに磨き既存製品をアップグレードします。\n"
         "安全性を核に次世代モデルを開発します。"
     ),
-    "伝統的／中立的言語": (
-        "コスト最適化により営業利益率が上昇しました。\n"
-        "品質管理体制を再構築し不良率を削減しました。"
-    ),
     "その他（Other）": ""
 }
 label_options = list(category_definitions.keys())
 
-# session_state 初始化
+# 初始化
 if "data" not in st.session_state:
     st.session_state.data = None
 if "current_index" not in st.session_state:
@@ -38,8 +34,7 @@ if "current_index" not in st.session_state:
 if "annotations" not in st.session_state:
     st.session_state.annotations = []
 
-# Streamlit 介面
-st.title("📊 日本語：企業年報文のアイデンティティ分類（Excel標註モード）")
+st.title("📊 日本語：企業年報文のアイデンティティ分類（簡化版）")
 uploaded_file = st.file_uploader("Excel ファイルをアップロードしてください", type=["xlsx"])
 
 if uploaded_file:
@@ -67,7 +62,7 @@ if uploaded_file:
             st.markdown("### ✏️ 分類対象の文")
             st.info(sentence)
 
-            # 分類推論
+            # 模型分類預測
             sentence_emb = model.encode(sentence, convert_to_tensor=True)
             definition_embs = {
                 label: model.encode(
@@ -110,4 +105,4 @@ if uploaded_file:
                     annotated[k] = v
                 st.session_state.annotations.append(annotated)
                 st.session_state.current_index += 1
-                st.rerun()  # ✅ 修正點：使用 st.rerun() 而非 experimental
+                st.rerun()
