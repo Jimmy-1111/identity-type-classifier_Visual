@@ -29,9 +29,6 @@ default_definitions = {
         "生産効率を7%向上させる改善活動を実施しました。\n"
         "コスト最適化により営業利益率が上昇しました。\n"
         "品質管理体制を再構築し不良率を削減しました。"
-    ),
-    "その他（Other）": (
-        "注記：本資料は監査法人の確認を受けています。"
     )
 }
 
@@ -44,8 +41,6 @@ category_inputs = {}
 user_inputs = {}
 
 for cat, default in default_definitions.items():
-    if cat == "その他（Other）":
-        continue  # 不顯示 "その他" 的輸入框
     text = st.text_area(cat, value=default, height=90)
     category_inputs[cat] = default if text.strip() == default.strip() else text
 
@@ -97,7 +92,6 @@ if st.button("\U0001F680 分析する"):
         predicted_labels.append(best_label)
         similarity_scores.append(best_score)
 
-        # 解釈出力
         top_sentences = category_inputs[best_label].split("\n")[:2]
         explanation = f"この文は『{best_label}』に最も近い定義文と高い類似度（{best_score:.2f}）を示しました。\n例：{top_sentences[0]}"
         explanations.append(explanation)
@@ -111,5 +105,6 @@ if st.button("\U0001F680 分析する"):
     st.subheader("\U0001F50D 分析結果")
     st.dataframe(result_df, use_container_width=True)
 
+    st.subheader("\U0001F4AC 分類の説明")
     for i, explanation in enumerate(explanations):
         st.info(f"\n【文 {i+1} の分類理由】\n{explanation}")
