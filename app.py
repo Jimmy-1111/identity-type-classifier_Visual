@@ -3,10 +3,10 @@ import pandas as pd
 import torch
 from sentence_transformers import SentenceTransformer, util
 
-# ✅ 修正：不要使用 .to()
+# 模型載入
 model = SentenceTransformer("sonoisa/sentence-bert-base-ja-mean-tokens")
 
-# ✅ 分類定義文（已移除「伝統的／中立的言語」）
+# 分類定義文（已簡化為4類）
 category_definitions = {
     "アイデンティティ挑戦型イノベーション": (
         "私たちはモビリティサービス企業へと転換します。\n"
@@ -25,7 +25,7 @@ category_definitions = {
 }
 label_options = list(category_definitions.keys())
 
-# session_state 初始化
+# 初始化
 if "data" not in st.session_state:
     st.session_state.data = None
 if "current_index" not in st.session_state:
@@ -33,7 +33,12 @@ if "current_index" not in st.session_state:
 if "annotations" not in st.session_state:
     st.session_state.annotations = []
 
-st.title("📊 日本語：企業年報文のアイデンティティ分類（簡化版）")
+st.title("📊 日本語：企業年報文のアイデンティティ分類（標註協作版）")
+
+# 新增：標註人員輸入欄
+annotator = st.text_input("✍️ 標註人員名稱（將記錄在每筆資料中）", value="匿名")
+
+# 上傳 Excel
 uploaded_file = st.file_uploader("Excel ファイルをアップロードしてください", type=["xlsx"])
 
 if uploaded_file:
@@ -43,7 +48,13 @@ if uploaded_file:
 
     if col_name:
         current = st.session_state.current_index
-        if current >= len(df):
+        total = len(df)
+
+        # 顯示進度條
+        st.markdown(f"⏳ 標註進度：{current + 1} / {total}")
+        st.progress((current + 1) / total)
+
+        if current >= total:
             st.success("✅ すべての文を分類しました！")
             result_df = pd.DataFrame(st.session_state.annotations)
             st.dataframe(result_df)
@@ -61,7 +72,7 @@ if uploaded_file:
             st.markdown("### ✏️ 分類対象の文")
             st.info(sentence)
 
-            # 分類預測
+            # 模型分類預測
             sentence_emb = model.encode(sentence, convert_to_tensor=True)
             definition_embs = {
                 label: model.encode(
@@ -99,9 +110,10 @@ if uploaded_file:
                     "モデル分類": predicted_label,
                     "相似度スコア": best_score,
                     "修正後ラベル": selected_label,
+                    "標註人員": annotator,
                 }
                 for k, v in row.items():
                     annotated[k] = v
                 st.session_state.annotations.append(annotated)
                 st.session_state.current_index += 1
-                st.rerun()  # ✅ 自動刷新下一筆
+                st.rerun()
