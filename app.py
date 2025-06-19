@@ -31,12 +31,7 @@ default_definitions = {
         "品質管理体制を再構築し不良率を削減しました。"
     ),
     "その他（Other）": (
-        "第２【事業の状況】\n"
-        "図１：収益の推移\n"
-        "注記：本資料は監査法人の確認を受けています。\n"
-        "目次\n"
-        "以上\n"
-        "当連結会計年度の日本経済は、景気が緩やかに回復した。"
+        "注記：本資料は監査法人の確認を受けています。"
     )
 }
 
@@ -49,6 +44,8 @@ category_inputs = {}
 user_inputs = {}
 
 for cat, default in default_definitions.items():
+    if cat == "その他（Other）":
+        continue  # 不顯示 "その他" 的輸入框
     text = st.text_area(cat, value=default, height=90)
     category_inputs[cat] = default if text.strip() == default.strip() else text
 
@@ -81,11 +78,13 @@ if st.button("\U0001F680 分析する"):
 
     predicted_labels = []
     similarity_scores = []
+    explanations = []
 
     for sent, sent_emb in zip(sentences, sentence_embeddings):
         if is_force_other(sent):
             predicted_labels.append("その他（Other）")
             similarity_scores.append(0.0)
+            explanations.append("この文は『【】』または経済・外部環境に関する語句が含まれているため、自動的に『その他』に分類されました。")
             continue
 
         scores = {
@@ -98,6 +97,11 @@ if st.button("\U0001F680 分析する"):
         predicted_labels.append(best_label)
         similarity_scores.append(best_score)
 
+        # 解釈出力
+        top_sentences = category_inputs[best_label].split("\n")[:2]
+        explanation = f"この文は『{best_label}』に最も近い定義文と高い類似度（{best_score:.2f}）を示しました。\n例：{top_sentences[0]}"
+        explanations.append(explanation)
+
     result_df = pd.DataFrame({
         "入力文": sentences,
         "分類ラベル": predicted_labels,
@@ -106,3 +110,6 @@ if st.button("\U0001F680 分析する"):
 
     st.subheader("\U0001F50D 分析結果")
     st.dataframe(result_df, use_container_width=True)
+
+    for i, explanation in enumerate(explanations):
+        st.info(f"\n【文 {i+1} の分類理由】\n{explanation}")
