@@ -38,7 +38,6 @@ st.title("\U0001F4CA 日本語：企業年報文のアイデンティティ分�
 
 st.header("\U0001F4DD 分類基準の定義文（複数行可）")
 category_inputs = {}
-user_inputs = {}
 
 for cat, default in default_definitions.items():
     text = st.text_area(cat, value=default, height=90)
