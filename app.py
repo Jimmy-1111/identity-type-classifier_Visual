@@ -36,12 +36,9 @@ default_definitions = {
 st.set_page_config(page_title="日本語句子分類", layout="centered")
 st.title("\U0001F4CA 日本語：企業年報文のアイデンティティ分類")
 
-st.header("\U0001F4DD 分類基準の定義文（複数行可）")
 category_inputs = {}
-
 for cat, default in default_definitions.items():
-    text = st.text_area(cat, value=default, height=90)
-    category_inputs[cat] = default if text.strip() == default.strip() else text
+    category_inputs[cat] = default
 
 st.header("\U0001F58B️ 分析対象の文を入力（1 行 1 文）")
 sentences_text = st.text_area("ここに文を入力してください", height=220)
