@@ -31,6 +31,7 @@ default_definitions = {
         "品質管理体制を再構築し不良率を削減しました。"
     )
 }
+label_options = list(default_definitions.keys()) + ["その他（Other）"]
 
 EXTERNAL_ONLY_KEYWORDS = [
     "経済", "景気", "インフレ", "金利", "為替", "物価", "政策", "地政学",
@@ -40,13 +41,18 @@ EXTERNAL_ONLY_KEYWORDS = [
 def is_force_other(sent):
     return "【" in sent or "】" in sent or any(kw in sent for kw in EXTERNAL_ONLY_KEYWORDS)
 
-# === Streamlit 頁面 ===
+# === Streamlit 介面設定 ===
 st.set_page_config(page_title="アイデンティティ分類", layout="centered")
 st.title("📊 日本語：企業年報文のアイデンティティ分類")
+
+# === 初始化狀態 ===
+if "results" not in st.session_state:
+    st.session_state.results = None
 
 st.header("🖊️ 分析対象の文を入力（1 行 1 文）")
 sentences_text = st.text_area("ここに文を入力してください", height=220)
 
+# === 分析按鈕 ===
 if st.button("🚀 分析する"):
     sentences = [s.strip() for s in sentences_text.splitlines() if s.strip()]
     if not sentences:
@@ -54,85 +60,61 @@ if st.button("🚀 分析する"):
         st.stop()
 
     sentence_embeddings = model.encode(sentences, convert_to_tensor=True)
+    definition_embeddings = {
+        label: model.encode(
+            [t.strip() for t in text.splitlines() if t.strip()],
+            convert_to_tensor=True
+        ).mean(dim=0)
+        for label, text in default_definitions.items()
+    }
 
-    # 定義文向量化
-    definition_embeddings = {}
-    for label, definition_text in default_definitions.items():
-        defs = [t.strip() for t in definition_text.splitlines() if t.strip()]
-        emb = model.encode(defs, convert_to_tensor=True).mean(dim=0)
-        definition_embeddings[label] = emb
-
-    predicted_labels = []
-    similarity_scores = []
-    explanations = []
-
-    for sent, sent_emb in zip(sentences, sentence_embeddings):
+    data = []
+    for i, (sent, emb) in enumerate(zip(sentences, sentence_embeddings)):
         if is_force_other(sent):
-            predicted_labels.append("その他（Other）")
-            similarity_scores.append(0.0)
-            explanations.append(
-                "この文は『【】』または経済・外部環境に関する語句が含まれているため、自動的に『その他』に分類されました。"
+            pred_label = "その他（Other）"
+            score = 0.0
+            explanation = "『【】』または外部環境に関する語が含まれていたため、自動的に『その他』に分類。"
+        else:
+            scores = {k: float(util.cos_sim(emb, v)) for k, v in definition_embeddings.items()}
+            sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            pred_label, score = sorted_scores[0]
+            second_label, second_score = sorted_scores[1]
+            example = "\n".join(f"・{s}" for s in default_definitions[pred_label].splitlines()[:3])
+            explanation = (
+                f"この文は『{pred_label}』に最も高い類似度（{score:.2f}）を示しました。\n"
+                f"次に近いのは『{second_label}』（{second_score:.2f}）でした。\n\n"
+                f"《参考：『{pred_label}』の定義文例》\n{example}"
             )
-            continue
+            if abs(score - second_score) < 0.05:
+                explanation += "\n\n※注意：2つの分類の類似度が近いため、解釈に柔軟性が求められます。"
+        data.append({
+            "入力文": sent,
+            "分類ラベル": pred_label,
+            "similarity score": score,
+            "分類理由": explanation,
+            "修正後ラベル": pred_label  # 初始為預測值
+        })
 
-        scores = {
-            label: float(util.cos_sim(sent_emb, def_emb))
-            for label, def_emb in definition_embeddings.items()
-        }
+    st.session_state.results = data  # 儲存分析結果
 
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        best_label, best_score = sorted_scores[0]
-        second_label, second_score = sorted_scores[1]
-
-        predicted_labels.append(best_label)
-        similarity_scores.append(best_score)
-
-        top_examples = default_definitions[best_label].split("\n")[:3]
-        top_examples_text = "\n".join(f"・{ex}" for ex in top_examples)
-
-        explanation = (
-            f"この文は『{best_label}』の定義に最も高い類似度（{best_score:.2f}）を示しました。\n"
-            f"次に近いのは『{second_label}』（{second_score:.2f}）でした。\n\n"
-            f"《参考：『{best_label}』の定義文例》\n{top_examples_text}"
-        )
-        if abs(best_score - second_score) < 0.05:
-            explanation += "\n\n※注意：2つの分類の類似度が近いため、解釈に柔軟性が求められます。"
-
-        explanations.append(explanation)
-
-    result_df = pd.DataFrame({
-        "入力文": sentences,
-        "分類ラベル": predicted_labels,
-        "similarity score": similarity_scores
-    })
-
-    st.subheader("🔍 分析結果（モデル予測）")
-    st.dataframe(result_df, use_container_width=True)
-
-    st.subheader("💬 分類の説明")
-    for i, explanation in enumerate(explanations):
-        st.info(f"\n【文 {i+1} の分類理由】\n{explanation}")
-
-    # === 手動修正區 ===
-    st.subheader("✏️ 分類の修正（必要に応じて）")
-    manual_labels = []
-    label_options = list(default_definitions.keys()) + ["その他（Other）"]
-
-    for i, row in result_df.iterrows():
+# === 顯示結果與分類修正 ===
+if st.session_state.results:
+    st.subheader("💬 分類の説明と修正")
+    for i, row in enumerate(st.session_state.results):
         st.markdown(f"**文 {i+1}：** {row['入力文']}")
-        selected = st.selectbox(
+        st.info(row["分類理由"])
+        new_label = st.selectbox(
             "分類ラベルを修正する（またはそのまま）",
             label_options,
-            index=label_options.index(row["分類ラベル"]),
-            key=f"manual_select_{i}"
+            index=label_options.index(row["修正後ラベル"]),
+            key=f"label_select_{i}"
         )
-        manual_labels.append(selected)
+        st.session_state.results[i]["修正後ラベル"] = new_label
 
-    result_df["修正後ラベル"] = manual_labels
+    # 匯出表格
+    result_df = pd.DataFrame(st.session_state.results)
+    st.subheader("📥 修正後の結果一覧")
+    st.dataframe(result_df[["入力文", "分類ラベル", "修正後ラベル", "similarity score"]], use_container_width=True)
 
-    st.subheader("📥 修正後の結果")
-    st.dataframe(result_df, use_container_width=True)
-
-    # === 下載按鈕 ===
     csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button("📥 修正結果をCSVでダウンロード", csv, "classified_results.csv", "text/csv")
