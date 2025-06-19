@@ -3,11 +3,10 @@ import pandas as pd
 import torch
 from sentence_transformers import SentenceTransformer, util
 
-# 模型載入
+# ✅ 修正：不要使用 .to()
 model = SentenceTransformer("sonoisa/sentence-bert-base-ja-mean-tokens")
-model.to(torch.device("cpu"))
 
-# 分類定義文（已移除「伝統的／中立的言語」）
+# ✅ 分類定義文（已移除「伝統的／中立的言語」）
 category_definitions = {
     "アイデンティティ挑戦型イノベーション": (
         "私たちはモビリティサービス企業へと転換します。\n"
@@ -26,7 +25,7 @@ category_definitions = {
 }
 label_options = list(category_definitions.keys())
 
-# 初始化
+# session_state 初始化
 if "data" not in st.session_state:
     st.session_state.data = None
 if "current_index" not in st.session_state:
@@ -62,7 +61,7 @@ if uploaded_file:
             st.markdown("### ✏️ 分類対象の文")
             st.info(sentence)
 
-            # 模型分類預測
+            # 分類預測
             sentence_emb = model.encode(sentence, convert_to_tensor=True)
             definition_embs = {
                 label: model.encode(
@@ -105,4 +104,4 @@ if uploaded_file:
                     annotated[k] = v
                 st.session_state.annotations.append(annotated)
                 st.session_state.current_index += 1
-                st.rerun()
+                st.rerun()  # ✅ 自動刷新下一筆
