@@ -75,21 +75,35 @@ if st.button("\U0001F680 分析する"):
         if is_force_other(sent):
             predicted_labels.append("その他（Other）")
             similarity_scores.append(0.0)
-            explanations.append("この文は『【】』または経済・外部環境に関する語句が含まれているため、自動的に『その他』に分類されました。")
+            explanations.append(
+                "この文は『【】』または経済・外部環境に関する語句が含まれているため、自動的に『その他』に分類されました。"
+            )
             continue
 
         scores = {
             label: float(util.cos_sim(sent_emb, def_emb))
             for label, def_emb in definition_embeddings.items()
         }
-        best_label = max(scores, key=scores.get)
-        best_score = scores[best_label]
+
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        best_label, best_score = sorted_scores[0]
+        second_label, second_score = sorted_scores[1]
 
         predicted_labels.append(best_label)
         similarity_scores.append(best_score)
 
-        top_sentences = category_inputs[best_label].split("\n")[:2]
-        explanation = f"この文は『{best_label}』に最も近い定義文と高い類似度（{best_score:.2f}）を示しました。\n例：{top_sentences[0]}"
+        top_examples = category_inputs[best_label].split("\n")[:3]
+        top_examples_text = "\n".join(f"・{ex}" for ex in top_examples)
+
+        explanation = (
+            f"この文は『{best_label}』の定義に最も高い類似度（{best_score:.2f}）を示しました。\n"
+            f"次に近いのは『{second_label}』（{second_score:.2f}）でした。\n\n"
+            f"《参考：『{best_label}』の定義文例》\n{top_examples_text}"
+        )
+
+        if abs(best_score - second_score) < 0.05:
+            explanation += "\n\n※注意：2つの分類の類似度が近いため、解釈に柔軟性が求められます。"
+
         explanations.append(explanation)
 
     result_df = pd.DataFrame({
