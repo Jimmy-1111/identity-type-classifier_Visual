@@ -41,18 +41,18 @@ EXTERNAL_ONLY_KEYWORDS = [
 def is_force_other(sent):
     return "【" in sent or "】" in sent or any(kw in sent for kw in EXTERNAL_ONLY_KEYWORDS)
 
-# === Streamlit 介面設定 ===
+# === Streamlit UI ===
 st.set_page_config(page_title="アイデンティティ分類", layout="centered")
 st.title("📊 日本語：企業年報文のアイデンティティ分類")
 
-# === 初始化狀態 ===
+# === 初始化 session_state ===
 if "results" not in st.session_state:
     st.session_state.results = None
 
 st.header("🖊️ 分析対象の文を入力（1 行 1 文）")
 sentences_text = st.text_area("ここに文を入力してください", height=220)
 
-# === 分析按鈕 ===
+# === 分析流程 ===
 if st.button("🚀 分析する"):
     sentences = [s.strip() for s in sentences_text.splitlines() if s.strip()]
     if not sentences:
@@ -69,40 +69,29 @@ if st.button("🚀 分析する"):
     }
 
     data = []
-    for i, (sent, emb) in enumerate(zip(sentences, sentence_embeddings)):
+    for sent, emb in zip(sentences, sentence_embeddings):
         if is_force_other(sent):
             pred_label = "その他（Other）"
             score = 0.0
-            explanation = "『【】』または外部環境に関する語が含まれていたため、自動的に『その他』に分類。"
         else:
             scores = {k: float(util.cos_sim(emb, v)) for k, v in definition_embeddings.items()}
             sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             pred_label, score = sorted_scores[0]
-            second_label, second_score = sorted_scores[1]
-            example = "\n".join(f"・{s}" for s in default_definitions[pred_label].splitlines()[:3])
-            explanation = (
-                f"この文は『{pred_label}』に最も高い類似度（{score:.2f}）を示しました。\n"
-                f"次に近いのは『{second_label}』（{second_score:.2f}）でした。\n\n"
-                f"《参考：『{pred_label}』の定義文例》\n{example}"
-            )
-            if abs(score - second_score) < 0.05:
-                explanation += "\n\n※注意：2つの分類の類似度が近いため、解釈に柔軟性が求められます。"
+
         data.append({
             "入力文": sent,
             "分類ラベル": pred_label,
             "similarity score": score,
-            "分類理由": explanation,
-            "修正後ラベル": pred_label  # 初始為預測值
+            "修正後ラベル": pred_label
         })
 
-    st.session_state.results = data  # 儲存分析結果
+    st.session_state.results = data  # 儲存結果
 
-# === 顯示結果與分類修正 ===
+# === 修正區 + 最終表格 ===
 if st.session_state.results:
-    st.subheader("💬 分類の説明と修正")
+    st.subheader("✏️ 分類の修正（必要に応じて）")
     for i, row in enumerate(st.session_state.results):
         st.markdown(f"**文 {i+1}：** {row['入力文']}")
-        st.info(row["分類理由"])
         new_label = st.selectbox(
             "分類ラベルを修正する（またはそのまま）",
             label_options,
@@ -111,10 +100,11 @@ if st.session_state.results:
         )
         st.session_state.results[i]["修正後ラベル"] = new_label
 
-    # 匯出表格
+    # 匯出用 DataFrame
     result_df = pd.DataFrame(st.session_state.results)
+
     st.subheader("📥 修正後の結果一覧")
-    st.dataframe(result_df[["入力文", "分類ラベル", "修正後ラベル", "similarity score"]], use_container_width=True)
+    st.dataframe(result_df[["入力文", "修正後ラベル"]], use_container_width=True)
 
     csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button("📥 修正結果をCSVでダウンロード", csv, "classified_results.csv", "text/csv")
