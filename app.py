@@ -32,13 +32,6 @@ default_definitions = {
     )
 }
 
-# === Streamlit 介面設定 ===
-st.set_page_config(page_title="日本語アイデンティティ分類", layout="centered")
-st.title("📊 日本語：企業年報文のアイデンティティ分類")
-
-st.header("🖊️ 分析対象の文を入力（1 行 1 文）")
-sentences_text = st.text_area("ここに文を入力してください", height=220)
-
 EXTERNAL_ONLY_KEYWORDS = [
     "経済", "景気", "インフレ", "金利", "為替", "物価", "政策", "地政学",
     "個人消費", "中央銀行", "消費者心理", "投資環境", "輸出", "輸入", "GDP", "景況感"
@@ -46,6 +39,13 @@ EXTERNAL_ONLY_KEYWORDS = [
 
 def is_force_other(sent):
     return "【" in sent or "】" in sent or any(kw in sent for kw in EXTERNAL_ONLY_KEYWORDS)
+
+# === Streamlit 頁面 ===
+st.set_page_config(page_title="アイデンティティ分類", layout="centered")
+st.title("📊 日本語：企業年報文のアイデンティティ分類")
+
+st.header("🖊️ 分析対象の文を入力（1 行 1 文）")
+sentences_text = st.text_area("ここに文を入力してください", height=220)
 
 if st.button("🚀 分析する"):
     sentences = [s.strip() for s in sentences_text.splitlines() if s.strip()]
@@ -59,8 +59,6 @@ if st.button("🚀 分析する"):
     definition_embeddings = {}
     for label, definition_text in default_definitions.items():
         defs = [t.strip() for t in definition_text.splitlines() if t.strip()]
-        if not defs:
-            continue
         emb = model.encode(defs, convert_to_tensor=True).mean(dim=0)
         definition_embeddings[label] = emb
 
@@ -97,7 +95,6 @@ if st.button("🚀 分析する"):
             f"次に近いのは『{second_label}』（{second_score:.2f}）でした。\n\n"
             f"《参考：『{best_label}』の定義文例》\n{top_examples_text}"
         )
-
         if abs(best_score - second_score) < 0.05:
             explanation += "\n\n※注意：2つの分類の類似度が近いため、解釈に柔軟性が求められます。"
 
@@ -109,9 +106,33 @@ if st.button("🚀 分析する"):
         "similarity score": similarity_scores
     })
 
-    st.subheader("🔍 分析結果")
+    st.subheader("🔍 分析結果（モデル予測）")
     st.dataframe(result_df, use_container_width=True)
 
     st.subheader("💬 分類の説明")
     for i, explanation in enumerate(explanations):
         st.info(f"\n【文 {i+1} の分類理由】\n{explanation}")
+
+    # === 手動修正區 ===
+    st.subheader("✏️ 分類の修正（必要に応じて）")
+    manual_labels = []
+    label_options = list(default_definitions.keys()) + ["その他（Other）"]
+
+    for i, row in result_df.iterrows():
+        st.markdown(f"**文 {i+1}：** {row['入力文']}")
+        selected = st.selectbox(
+            "分類ラベルを修正する（またはそのまま）",
+            label_options,
+            index=label_options.index(row["分類ラベル"]),
+            key=f"manual_select_{i}"
+        )
+        manual_labels.append(selected)
+
+    result_df["修正後ラベル"] = manual_labels
+
+    st.subheader("📥 修正後の結果")
+    st.dataframe(result_df, use_container_width=True)
+
+    # === 下載按鈕 ===
+    csv = result_df.to_csv(index=False).encode("utf-8")
+    st.download_button("📥 修正結果をCSVでダウンロード", csv, "classified_results.csv", "text/csv")
